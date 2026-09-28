@@ -27,10 +27,23 @@
 
      Milestone 5. -->
 
+This is a question-answering system over `campus_life`, a corpus of 88 short
+posts in which students pass on the things nobody puts in the handbook: how
+long the queue at a particular dining hall gets at 12:30, which residence hall
+stays loud until 1am, how late you can still declare a course pass/fail. You
+ask a plain question and get back an answer drawn only from those posts, with
+the file it came from named underneath.
+
+The corpus covers four areas — administrative deadlines and policies, nine
+courses, seven residence halls, and seven dining halls — so it answers
+questions like "are CS 210 midterms curved?" or "how much printing do I get per
+semester?". Questions it has no documents for are refused before the model is
+ever called, rather than answered from the model's general knowledge.
+
 ## Chunking Strategy
 
-**Chunk size:**
-**Overlap:**
+**Chunk size:** 450 characters — a ceiling, not a target. Chunks actually average 251 (shortest 141, longest 421).
+**Overlap:** 0 characters of body text. Each document's title line is repeated on every chunk instead.
 
 <!-- What about YOUR documents made you pick these numbers? Short posts and
      long sectioned guides don't want the same chunking, and "800 seemed
@@ -41,6 +54,57 @@
      more than pretending you got it right first time.
 
      Milestone 3. -->
+
+The starter's 800-character window never fired on this corpus. The longest
+document in `campus_life` is 549 characters and the median is 305, so all 88
+documents came out as 88 chunks — the chunker was doing nothing at all. That
+was the baseline.
+
+Splitting on paragraph breaks was the obvious fix, and on its own it would have
+made retrieval worse. Every document opens with a one-line title, and the thing
+being described is named *only* there:
+
+```
+Noise levels in Morrow House           the only mention of "Morrow House"
+
+Loud until about 1am on weekends, no enforced quiet hours.
+
+If you're someone who needs quiet to work, the library is open until 2am...
+```
+
+Split that on paragraphs and the last chunk is an anonymous sentence about the
+library, no longer retrievable by anyone asking about Morrow House. Over half
+the corpus has this shape; all 27 course files and all 21 housing files — so
+it was not an edge case.
+
+So each chunk gets its document's title line prepended. That is what the
+overlap is doing: repeating ~30 characters of title carries the context that
+matters, where 120 characters of arbitrary preceding prose would not.
+
+**The ceiling changed partway through.** It was set to 400 first. At 400 the
+ceiling collided with the merge step on `dining_verrill_street_grill.txt`: the
+two body paragraphs merge to 387 characters, the title takes the room down to
+378, and the result was re-split so that "Costs declining balance, or cash
+after 11:00pm." became a 69-character chunk of its own. Sweeping the value
+showed 450 is the smallest ceiling where nothing falls below the 120-character
+floor, and that 450, 500 and 600 produce identical output. 450 is therefore the
+smallest ceiling that never cuts a paragraph group this corpus actually
+contains.
+
+**What it still gets wrong.** The 120-character floor stops fragments but does
+not give one topic per chunk. Three of the five sample chunks below cover two
+topics — chunk 4 is wait times *and* seating, chunk 5 is noise levels *and*
+where people go to study. Someone asking how many seats The Ridgeway Café has
+gets a chunk that is mostly about lunch queues. Fragments were traded for a
+milder version of the opposite problem, which is what acceptance criterion 4
+now targets.
+
+| | Before (`fallback_split`) | After (`split_documents`) |
+|---|---|---|
+| Chunks | 88 | 114 |
+| Average length | 317 | 251 |
+| Shortest | 178 | 141 |
+| Longest | 549 | 421 |
 
 ## Sample Chunks
 
@@ -171,9 +235,15 @@ identically on these ten questions.
 
      Milestone 5. -->
 
-**1.**
+**1. Pressure-testing my acceptance criteria.** I drafted criterion 4 myself:
+at least 3 of 5 sampled chunks covering exactly one topic, because when I read my five chunks I counted 2 that were single-topic and knew the reason was my chunker merging short paragraphs together. I then asked Claude to check it, and it came back with suggestions.
 
-**2.**
+**2. Choosing a chunking strategy.** I described what I had seen in the
+documents and asked for options rather than an implementation. Claude gave me
+three: leave one post as one chunk, split on paragraph breaks, or split on
+paragraph breaks and prepend each document's title line to every chunk.  I picked the third option. 
+
+
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never

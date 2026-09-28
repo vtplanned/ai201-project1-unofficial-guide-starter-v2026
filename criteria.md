@@ -23,8 +23,14 @@ For at least 4 of my 5 test questions, the retrieved chunks include one that
 contains the answer.
 
 **Why this target:**
-<!-- e.g. "One of my questions is about a topic only two documents mention, so
-     I expect that one to be hard." -->
+
+4 of 5 rather than 5 of 5 because my corpus stores each course and each
+residence hall across three sibling files — main, exams and workload for
+courses; main, laundry and noise for housing. Several of those files mention
+the same course or building, so the chunk that actually holds the answer
+competes with two near-identical neighbours. "Are CS 210 midterms curved?" has
+three plausible files behind it and only one right one, and I expected at least
+one of my five questions to land on a sibling.
 
 ---
 
@@ -33,8 +39,14 @@ contains the answer.
 Every answer the system produces names at least one source document.
 
 **Why this target:**
-<!-- Why all five and not four? What about your setup makes that achievable —
-     or what would have to go wrong for it not to be? -->
+
+All five and not four because naming the file is not a judgement call — it is
+an instruction the pipeline already sends on every request. `GROUNDING_INSTRUCTION`
+in `generate.py` requires the answer to name the document it came from, and the
+gate means the model is only ever called when a chunk came back close enough to
+cite. A missing source would mean the instruction was ignored outright, which
+is a broken pipeline rather than a hard question, so there is no reason to
+allow one failure.
 
 ---
 
@@ -50,8 +62,16 @@ in at least 4 of 5 tries.
      just keep five of them, or the "4 of 5" above has nothing to be 4 of. -->
 
 **Why this target:**
-<!-- What did your distances look like when you set the cutoff in Milestone 4?
-     Was there a clean gap, or did the two groups overlap? -->
+
+The two groups separated cleanly when I measured them in Milestone 4. My five
+in-corpus questions had best distances between 0.173 and 0.424; the five
+out-of-corpus questions landed between 0.825 and 0.934. That leaves a 0.401-wide
+gap with nothing in it, and the 0.6 cutoff sits inside it with room on both
+sides. I kept 4 of 5 rather than raising it to 5 of 5 because the gap was
+measured on exactly these five out-of-corpus questions, and a different
+off-topic question could land closer than any of them did — the nearest one
+already retrieved a history-course file at 0.825, which suggests the corpus has
+some pull on general-knowledge questions.
 
 ---
 
