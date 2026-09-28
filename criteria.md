@@ -69,10 +69,16 @@ in at least 4 of 5 tries.
        - "No chunk is shorter than 200 characters, since anything below that
           in my corpus turned out to be a heading with no content under it." -->
 
+At least 3 of 5 sampled chunks cover exactly one topic, meaning a chunk passes if it answers only one question. I judge this by reading each sampled chunk and counting the distinct questions it could answer.
 
 
 **Why this target:**
 
+When I read 5 chunks I counted 2 that were single-topic. I picked 3 because
+my chunker decides what to merge using only paragraph length, and if it also looked at whether two paragraphs were about the same thing it could keep at
+least one more pair apart. I didn't pick 4 or 5 because that would mean splitting nearly every paragraph into its own chunk, and those pieces would
+fall below the 120-character floor I added to stop fragments. I can't have no fragments and one topic per chunk at the same time, and I chose no
+fragments.
 
 
 ---
@@ -88,8 +94,18 @@ in at least 4 of 5 tries.
      outcome. -->
 
 
+For at least 4 of my 5 test questions, the source document named in the
+answer is the document that actually contains the answer. I judge this by
+opening the named file and checking that the answer text appears in it.
 
 **Why this target:**
+
+Criterion 2 only checks that a source is named, not that it is the correct one. My corpus splits each course and each building across three files —
+main, exams, workload for courses; main, laundry, noise for housing — so five documents can all legitimately mention "CS 210" and only one of them
+answers the question. Naming the wrong sibling file would look right and be wrong. I picked 4 of 5 rather than 5 of 5 because the retrieved chunks come
+back ranked and the top chunk is not always the one the answer was drawn
+from.
+
 
 
 
