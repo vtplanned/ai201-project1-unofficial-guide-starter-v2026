@@ -53,29 +53,62 @@
 
      Milestone 3. -->
 
-**Chunk 1** — source: `` — produced by: ``
+**Chunk 1** — source: `admin_add_drop_deadline.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+On the add/drop deadline
+
+You can add a course through the end of the second week. Dropping is a longer
+window — through the end of week six — but a drop after week two shows as a W
+on your transcript. Nothing anywhere on the registrar's site says this plainly,
+and students find out from each other.
 ```
 
-**Chunk 2** — source: `` — produced by: ``
+**Chunk 2** — source: `course_cs_210.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+CS 210 Data Structures
+
+I'm a junior and I've done this twice now. Format is lecture with weekly labs;
+slides go up after class, not before. Assessment: two midterms and a final, all
+drawn from lecture material rather than the textbook. Midterms are curved, the
+final is not.
 ```
 
-**Chunk 3** — source: `` — produced by: ``
+**Chunk 3** — source: `course_math_220_exams.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+MATH 220 Linear Algebra — assessment
+
+Two midterms and a cumulative final. Curved to a b- median.
+
+The problem sets are the course; the lectures make sense afterwards rather than
+during.
 ```
 
-**Chunk 4** — source: `` — produced by: ``
+**Chunk 4** — source: `dining_the_ridgeway_cafe_followup.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+Re: The Ridgeway Café
+
+Adding to what people have said about The Ridgeway Café. The wait figure of 10
+to 15 minutes at 12:30 matches what I've seen. If you're trying to eat between
+classes, go before 11:45 and it's a different building entirely.
+
+Also worth saying: seating is tight; about 40 seats for a building of 900.
+Nobody tells you this at orientation.
 ```
 
-**Chunk 5** — source: `` — produced by: ``
+**Chunk 5** — source: `housing_innisfree_hall_noise.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+Noise levels in Innisfree Hall
+
+Asked about this a lot so writing it down. Moderate; the building is l-shaped
+and the short wing is much quieter.
+
+If you're someone who needs quiet to work, the library is open until 2am during
+term and that's what most people in this building end up doing.
 ```
 
 ## Sample Answer
@@ -83,11 +116,19 @@
 <!-- One complete question and answer, pasted as text, with the source line
      visible. Milestone 4. -->
 
-**Question:**
+**Question:** Are CS 210 midterms curved?
 
 **Answer:**
 
 ```
+  (best distance 0.424, cutoff 0.6)
+
+Yes, CS 210 midterms are curved.
+
+Source: course_cs_210_exams.txt (and course_cs_210.txt)
+
+Sources retrieved: course_cs_210.txt, course_cs_210_exams.txt, course_cs_340.txt,
+course_phys_130.txt, course_phys_130_exams.txt
 ```
 
 **My relevance cutoff:**
@@ -103,7 +144,21 @@
 
 | Question | In corpus? | Best distance |
 |---|---|---|
-|  |  |  |
+| What are the wait times at Kestrel Commons during lunch? | yes | 0.173 |
+| How late can I declare a course pass/fail? | yes | 0.207 |
+| How much printing does each student get per semester? | yes | 0.275 |
+| How late does it stay loud in Morrow House on weekends? | yes | 0.292 |
+| Are CS 210 midterms curved? | yes | 0.424 |
+| What is the capital of Mongolia? | no | 0.825 |
+| What is the recommended dosage of ibuprofen for a headache? | no | 0.848 |
+| How do I write a for loop in Rust? | no | 0.877 |
+| Who won the 1994 World Cup? | no | 0.886 |
+| How do I change the oil in a diesel engine? | no | 0.934 |
+
+In-corpus questions landed between **0.173 and 0.424**. Out-of-corpus questions
+landed between **0.825 and 0.934**. The gap between the two groups is 0.401
+wide with nothing in it, so any cutoff from roughly 0.45 to 0.80 behaves
+identically on these ten questions.
 
 ## How I Used AI
 
