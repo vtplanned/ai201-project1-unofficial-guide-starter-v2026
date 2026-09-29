@@ -235,13 +235,14 @@ identically on these ten questions.
 
      Milestone 5. -->
 
-**1. Pressure-testing my acceptance criteria.** I drafted criterion 4 myself:
-at least 3 of 5 sampled chunks covering exactly one topic, because when I read my five chunks I counted 2 that were single-topic and knew the reason was my chunker merging short paragraphs together. I then asked Claude to check it, and it came back with suggestions.
+**1. Pressure-testing my acceptance criteria.**  I drafted criterion 4 myself —
+at least 3 of 5 sampled chunks covering exactly one topic — after reading my five chunks and counting 2 that were single-topic. I asked Claude to tell me how it would test my sentence using only what the sentence said, without suggesting improvements. It could not: my pass test described the failure ("some chunks can answer multiple questions") rather than the pass condition, so anyone following it would have counted backwards. I rewrote it as a pass condition. It also pointed out that I had named a target of 3 of 5 without saying which 5 chunks get sampled, so a grader reading different chunks could get a different count. I added the sampling method. The number and the reason were mine both times; what changed was the wording that made them checkable.
 
 **2. Choosing a chunking strategy.** I described what I had seen in the
 documents and asked for options rather than an implementation. Claude gave me
 three: leave one post as one chunk, split on paragraph breaks, or split on
-paragraph breaks and prepend each document's title line to every chunk.  I picked the third option. 
+paragraph breaks and prepend each document's title line to every chunk.  I picked the third option. because the title is the only place the subject is named and
+plain paragraph splitting would have stranded context in over half the corpus.
 
 
 

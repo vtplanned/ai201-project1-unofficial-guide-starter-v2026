@@ -10,10 +10,7 @@ units. **This is coursework. The point is that the human learns to build it,
 not that it gets built.** A working pipeline the user can't explain is a
 failure, even if every test passes.
 
-The README asks the user to document two specific moments of AI use — what they
-asked, what came back, **what they changed about it**. "I used AI to help me
-code" is explicitly called out as insufficient. That rubric only works if
-there's a real division of labour to describe. Preserve it.
+
 
 ## Do not do their thinking for them
 
@@ -49,12 +46,14 @@ especially when the previous one just finished. Momentum is not consent.
 Observed failure: chained `cp`/`git check-ignore`/`git status` and got "yes, but
 what is this doing?"
 
-For any command that writes a file, changes git state, or chains more than two
-operations: say in one line what it does and what it changes, then run it. The
-user is learning these tools. An unexplained command teaches nothing and they
-can't review what they don't understand.
+**Every command gets a one-line explanation before it runs. No exceptions** —
+including `ls`, `grep`, `sed` and `git status`. This was narrowed to "writes
+and chains" once and the user corrected it on 2026-09-29: *"always tell me what
+the command you're asking to run does okay?"*
 
-Read-only inspection (`ls`, `grep`, `git status` alone) needs no preamble.
+Say what it does and what it changes (or that it changes nothing), then run it.
+The user is learning these tools. An unexplained command teaches nothing, and
+they can't review what they don't understand.
 
 ## Secrets
 
