@@ -273,15 +273,68 @@ plain paragraph splitting would have stranded context in over half the corpus.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Sampled chunks cover exactly one topic | 3 of 5 | 2/5 | 2/5 | 2/5 | MISSED |
+| 5. Named source is the file that holds the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
 
-<!-- Underneath, paste the REAL output for each criterion from one of your
-     runs — the actual text your system produced, not a description of it.
-     Name the file and function that produced it. -->
+Source file: `results/run_2026-09-29_0019_before.md`, produced by
+`run_eval.py::main`. Retrieval by `store.py::search` over chunks from
+`chunker.py::split_documents`. Criterion 4 is measured on chunks rather than on
+answers, by reading the five printed by `app.py chunks -n 5`, so it does not
+vary between runs; criterion 3 is one deterministic pass for the same reason.
+
+**Real output — criteria 1, 2 and 5** (run 1, `run_eval.py::main`):
+
+```
+### What are the wait times at Kestrel Commons during lunch? — run 1
+
+- Best distance: 0.1729 (passed the gate)
+- Sources retrieved: dining_halden_hall_followup.txt, dining_kestrel_commons.txt,
+  dining_kestrel_commons_followup.txt, dining_north_kitchen_followup.txt,
+  dining_the_ridgeway_cafe_followup.txt
+
+At Kestrel Commons, the wait times during lunch are 20 to 25 minutes between
+12:15 and 1:00, and under 5 minutes before 11:45.
+
+Source: `dining_kestrel_commons.txt`
+```
+
+That one line carries all three: the retrieved chunks contained the answer
+(criterion 1), a source is named (criterion 2), and `dining_kestrel_commons.txt`
+genuinely contains "20 to 25 minutes between 12:15 and 1:00, under 5 minutes
+before 11:45" rather than a sibling that merely mentions Kestrel Commons
+(criterion 5).
+
+**Real output — criterion 3** (`run_eval.py::check_out_of_scope`, cutoff 0.6):
+
+```
+| Out-of-scope question                        | Best distance | Gate    |
+| What is the capital of Mongolia?             | 0.825         | refused |
+| How do I change the oil in a diesel engine?  | 0.934         | refused |
+| Who won the 1994 World Cup?                  | 0.886         | refused |
+| What is the recommended dosage of ibuprofen? | 0.848         | refused |
+| How do I write a for loop in Rust?           | 0.877         | refused |
+-> gate refused 5 of 5
+```
+
+**Real output — criterion 4** (`app.py chunks -n 5`, produced by
+`chunker.py::split_documents`). Two of the five covered one topic; this is the
+kind that did not:
+
+```
+Re: The Ridgeway Café
+
+Adding to what people have said about The Ridgeway Café. The wait figure of 10
+to 15 minutes at 12:30 matches what I've seen. If you're trying to eat between
+classes, go before 11:45 and it's a different building entirely.
+
+Also worth saying: seating is tight; about 40 seats for a building of 900.
+Nobody tells you this at orientation.
+```
+
+Wait times and seating capacity are two separate questions in one chunk.
 
 ## Verdicts
 
@@ -296,11 +349,21 @@ plain paragraph splitting would have stranded context in over half the corpus.
 
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunks include one containing the answer, 4 of 5 | **MET** | All five questions returned the answer in a retrieved chunk on all three runs, so 5/5 clears 4 of 5 with a question to spare. Not close. |
+| 2 | Every answer names a source, 5 of 5 | **MET** | All 15 answers named a file. The format varied between runs — "Source: x", "(x)", "from `x`" — but I set the target on a source being named, not on its formatting, so varied wording does not make it a miss. |
+| 3 | Gate refuses out-of-corpus questions, 4 of 5 | **MET** | All five out-of-corpus questions were refused, the closest at 0.825 against a 0.6 cutoff. One deterministic pass, so the same 5/5 goes in all three columns. |
+| 4 | Sampled chunks cover exactly one topic, 3 of 5 | **MISSED** | Only 2 of the 5 sampled chunks answered a single question. The other three each covered two — wait times *and* seating, noise levels *and* where to study. 2 is below 3, so it misses. See the note below on whether the count is even stable. |
+| 5 | The named source is the file that holds the answer, 4 of 5 | **MET** | I opened every cited file and checked the answer text was in it. All 15 citations were correct, including both CS 210 siblings, where `course_cs_210.txt` and `course_cs_210_exams.txt` both genuinely state the midterms are curved. |
+
+**A note on criterion 4's measurement.** Applying my own test — "counting the
+distinct questions it could answer" — to the two chunks I scored as passing,
+I am not confident they pass either. The add/drop chunk answers when you can
+add, when you can drop, and when a W appears on your transcript. On a strict
+reading the before-count is 0 of 5, not 2 of 5. The verdict is MISSED on any
+reading, so this does not change the outcome, but the number underneath it is
+not reproducible. That is a measurement problem rather than a result problem,
+and it is recorded as a revision under criterion 4 in `criteria.md` rather
+than being edited into the original.
 
 ## Diagnoses
 
@@ -322,11 +385,47 @@ plain paragraph splitting would have stranded context in over half the corpus.
 
      Milestone 3. -->
 
+**Criterion 4 — stage: chunking. Mechanism: the merge step combines on length
+and never looks at meaning.**
+
+`chunker.py::_merge_short` walks the paragraphs of a document and keeps gluing
+them together until the buffer reaches `MIN_BODY_CHARS`, which was 120. Its only
+input is a character count. Nothing in it asks whether the two paragraphs it is
+about to join are about the same thing.
+
+On this corpus that guarantees the failure, because the documents are built as
+a short lead paragraph plus a short unrelated afterthought. In
+`dining_the_ridgeway_cafe_followup.txt` the first paragraph is wait times at
+12:30 and the second is that seating is tight — 40 seats for a building of 900.
+Neither reaches 120 characters on its own, so the merge joins them, and the
+result answers two questions instead of one. The same pattern produced the
+noise-plus-library chunk in `housing_innisfree_hall_noise.txt` and the
+exams-plus-problem-sets chunk in `course_math_220_exams.txt`.
+
+**The pattern across the miss.** All three failing chunks came from documents
+whose paragraphs are individually shorter than the floor. It is one problem,
+not three: the floor was set to stop fragments, and on documents this short the
+only way it can do that is by joining paragraphs that have nothing to do with
+each other. Criterion 4's own reason predicted exactly this trade-off before
+the test was run.
+
+The four criteria that were met are untouched by it: the merge affects what
+sits inside a chunk, not whether the chunk is retrieved or cited.
+
 ## The Improvement
 
-**What I changed:**
+**What I changed:** `MIN_BODY_CHARS` in `chunker.py` from 120 to 0, which stops
+`_merge_short` merging anything. Every body paragraph now becomes its own chunk,
+with the document's title line still prepended. One change, one constant; the
+rest of the pipeline is untouched. The corpus went from 114 chunks to 183, and
+average chunk length from 251 characters to 167.
 
-**Why I picked it:**
+**Why I picked it:** the diagnosis names the merge step as the mechanism that
+puts two topics in one chunk, so removing the merge is the narrowest change that
+addresses it. It also deliberately reverses the trade-off I wrote into criterion
+4's reason last unit — "I can't have no fragments and one topic per chunk at the
+same time, and I chose no fragments" — so this unit measures what the other
+choice costs.
 
 <!-- Connect it to a specific diagnosis above in one sentence. If you can't,
      you picked a fix because it sounded impressive. -->
@@ -338,11 +437,32 @@ plain paragraph splitting would have stranded context in over half the corpus.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Sampled chunks cover exactly one topic | 3 of 5 | 3/5 | 3/5 | 3/5 | MET |
+| 5. Named source is the file that holds the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+Source file: `results/run_2026-09-29_0111_after.md`, same functions as before.
+
+**Real output after the change** (`app.py chunks -n 5`, produced by
+`chunker.py::split_documents`) — the sampled chunks that now pass:
+
+```
+CS 340 Databases — assessment
+Start the term project in week three, not week eight; everyone learns this the
+hard way.
+```
+```
+Workload for PHYS 130 Mechanics
+People keep asking so: 7 hours a week, plus 3 on lab weeks. That's real time,
+not optimistic time.
+```
+```
+Re: Verrill Street Grill
+Also worth saying: one register, so the queue is a single line no matter how
+busy. Nobody tells you this at orientation.
+```
 
 **Did it help?**
 
@@ -352,6 +472,35 @@ plain paragraph splitting would have stranded context in over half the corpus.
      tell.
 
      Milestone 4. -->
+
+Yes, on the criterion it was aimed at, and it cost nothing measurable
+elsewhere.
+
+| Criterion | Target | Before | After |
+|---|---|---|---|
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 |
+| 4. Sampled chunks cover exactly one topic | 3 of 5 | **2/5 MISSED** | **3/5 MET** |
+| 5. Named source is the file that holds the answer | 4 of 5 | 5/5 | 5/5 |
+
+Criterion 4 went from 2 of 5 to 3 of 5 and crossed its target. Three of the
+five sampled chunks now answer exactly one question each — the CS 340 project
+advice, the PHYS 130 workload figure, the Verrill Street Grill register — where
+before those paragraphs would have been merged into whatever sat next to them.
+
+Retrieval also got slightly *better* rather than worse, which I did not expect.
+Best distances moved from 0.292 to 0.208 on the Morrow House question and 0.173
+to 0.161 on Kestrel Commons, presumably because a chunk that contains only the
+relevant paragraph is a closer match than one padded with an unrelated one. CS
+210 moved the other way, 0.424 to 0.448. All ten distances stayed on the correct
+side of the 0.6 cutoff and the gate still refused 5 of 5, so the change did not
+buy criterion 4 at the expense of criterion 3.
+
+I expected a trade-off and did not get one. The honest reading is that the
+120-character floor was protecting against a problem this corpus does not
+really have at retrieval time — the fragments it prevented were not hurting the
+four criteria I could measure.
 
 ## What's Still Broken
 
@@ -363,9 +512,75 @@ plain paragraph splitting would have stranded context in over half the corpus.
 
      Milestone 5. -->
 
+No criterion is still missed after the fix, so what follows is what I know is
+wrong that my criteria did not catch.
+
+**Criterion 4's measurement, which is the real problem.** It reads 3 of 5 now,
+but I cannot reproduce that number reliably. "Counting the distinct questions a
+chunk could answer" is a judgement, and I reached different counts on the same
+chunks an hour apart — the add/drop chunk is either one topic (deadlines) or
+three (adding, dropping, the W), depending on how finely I read it. I would
+replace the judgement with something mechanical: a chunk passes if it came from
+exactly one source paragraph. That is checkable by anyone, needs no
+interpretation, and on the current chunker every chunk would pass it — which
+tells me the real criterion I want is about the *documents*, not the chunks.
+I stopped here because rewriting the criterion properly means rewriting what it
+measures, and I would rather do that deliberately than at 1am.
+
+**The sample is 5 chunks out of 183.** Criterion 4 judges under 3% of the
+corpus, and `app.py chunks -n 5` picks a different five each time it is asked.
+A number that moves when you re-sample is not a measurement. Fix: fix the five
+by name, or score all 183 with a rule cheap enough to apply automatically.
+
+**Fragments came back and nothing is watching them.** The shortest chunk went
+from 141 characters to 63, because removing the merge removed the only floor
+in the chunker. None of my five criteria mentions chunk length, so this change
+could have flooded the index with two-word chunks and every criterion would
+still have read MET. That is a gap in my criteria, not in the pipeline. I would
+add a sixth: no chunk shorter than N characters, with N measured rather than
+guessed.
+
+**The add/drop chunk still covers three questions** and no change to the merge
+step will fix it, because it is one paragraph in the source document. Splitting
+it means splitting *within* a paragraph, which is a different and harder change
+than the one I made, and it is the reason criterion 4 sits at 3 of 5 rather
+than 5 of 5.
+
 ## What I'd Do Differently
 
 <!-- Knowing what you know now — which of your five criteria would you write
      differently, and why?
 
      Milestone 5. -->
+
+**Criterion 4, and not because I missed it.** I missed it on purpose and that
+part worked — it was the only criterion with anything to diagnose, and the
+whole improvement came out of it. What I would change is that I wrote a target
+on a property I had no reliable way to count. "Covers exactly one topic" sounds
+measurable and is not: it depends on how finely the reader chooses to slice a
+question. I would keep the intent and swap the test for something mechanical,
+along the lines of "no chunk is built from more than one source paragraph."
+Worth noting that the version I filed already tried to fix this by adding "I
+judge this by reading each sampled chunk and counting the distinct questions it
+could answer" — that made the method explicit without making it reproducible,
+which I did not realise until I had to apply it twice.
+
+**Criteria 1, 2, 3 and 5 were too safe, and the numbers say so.** All four came
+in at 5/5 on the first run, three of them against targets of 4 of 5. Nothing
+about them was hard, and a criterion you clear without noticing teaches you
+nothing. Specifically:
+
+- **Criterion 3** is the worst offender. My out-of-corpus questions were about
+  Mongolia, diesel engines, the World Cup, ibuprofen and Rust — nothing remotely
+  like a campus question, and they landed at 0.825–0.934 against a 0.6 cutoff.
+  A real test would use questions that sound like they belong: "what are the
+  wait times at the gym?" or "how do I appeal a parking ticket?" — plausible
+  campus questions my corpus happens not to cover. I would tighten it to **5 of
+  5 refused on plausible-but-uncovered questions** and expect to miss it.
+- **Criterion 1** I would raise from 4 of 5 to 5 of 5. I set it at 4 expecting
+  the sibling-file structure to cost me one question, and it never did.
+
+The general lesson: I set the targets I could defend rather than the ones that
+would tell me something. The one criterion where I deliberately targeted a
+property I was already failing is the one that produced every point of this
+unit's work.

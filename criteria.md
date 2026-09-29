@@ -100,6 +100,17 @@ least one more pair apart. I didn't pick 4 or 5 because that would mean splittin
 fall below the 120-character floor I added to stop fragments. I can't have no fragments and one topic per chunk at the same time, and I chose no
 fragments.
 
+> **Revised in unit 2:** At least 3 of 5 sampled chunks are built from exactly
+> one source paragraph.
+>
+> **Why revised:** The original could not be measured the same way twice.
+> "Counting the distinct questions a chunk could answer" turned out to depend
+> on how finely I chose to slice a question — the add/drop chunk is one topic
+> (deadlines) or three (adding, dropping, the W on your transcript) depending
+> on the reading, and I scored the same five chunks differently an hour apart.
+> The verdict was MISSED on every reading, so this is not a target being
+> lowered after the fact; the number behind it was never reproducible. Counting
+> source paragraphs is mechanical and gives any reader the same answer.
 
 ---
 
