@@ -38,7 +38,19 @@ TITLE_MAX_CHARS = 80
 
 # Below this, a paragraph is a fragment rather than a thought, so it gets merged
 # into its neighbour instead of standing as its own chunk.
-MIN_BODY_CHARS = 120
+#
+# UNIT 2 IMPROVEMENT: was 120, now 0.
+# Unit 1's acceptance criterion 4 targeted 3 of 5 sampled chunks covering
+# exactly one topic and measured 2 of 5. The diagnosis was the chunking stage:
+# _merge_short decides what to combine using paragraph LENGTH alone and never
+# asks whether two paragraphs are about the same thing, so a 94-character
+# paragraph about opening hours gets glued onto one about wait times.
+#
+# Setting the floor to 0 stops all merging: every body paragraph becomes its own
+# chunk. This deliberately reverses the trade-off named in criterion 4's reason
+# ("I can't have no fragments and one topic per chunk at the same time, and I
+# chose no fragments"). Fragments come back; single-topic chunks should rise.
+MIN_BODY_CHARS = 0
 
 
 @dataclass
