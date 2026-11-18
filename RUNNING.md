@@ -255,3 +255,68 @@ units.
 
 `results/` is deliberately **not** in `.gitignore`. Your run logs are evidence
 that the test actually happened, and they're part of what gets graded.
+
+---
+
+## Capstone (unit 9) — the run path
+
+**Path B: local, with logs.** This system loads an ONNX embedding model and a
+Chroma index from disk. A free host gives 512 MB and no disk that survives a
+restart, so the index would rebuild on every cold start. It runs locally and
+commits the record instead.
+
+### Start it
+
+From a clean checkout:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cp .env.example .env               # then paste your GEMINI_API_KEY in
+python app.py index                # builds chroma_db/, ~10s
+PORT=5055 python serve.py
+```
+
+**Use `PORT=5055`, not the default 5000.** On macOS, AirPlay Receiver
+(`ControlCenter`) binds port 5000 and answers every request with `403`. The
+Flask process starts fine and looks healthy while nothing reaches it. Either
+pass `PORT`, or turn AirPlay Receiver off in System Settings → General →
+AirDrop & Handoff.
+
+### Check it
+
+```bash
+curl --noproxy '*' http://127.0.0.1:5055/health
+
+curl --noproxy '*' -X POST http://127.0.0.1:5055/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "is the housing lottery random?"}'
+```
+
+The **first** `/ask` after start takes 30–60 seconds: the ONNX embedding model
+loads lazily on the first retrieval. Every request after that is under a
+second. Use `curl -m 120` on the first one or it will time out client-side
+while the server is still working.
+
+### What the environment needs
+
+| Thing | Value |
+|---|---|
+| Python | 3.11, 3.12 or 3.13 — **not 3.14** |
+| Dependencies | `requirements.txt`, pinned top and bottom |
+| Embedding model | `all-MiniLM-L6-v2`, ONNX build, **~80 MB**, downloaded by Chroma on first index into `~/.cache/chroma` |
+| Index on disk | `chroma_db/`, ~2 MB for `campus_life`, rebuilt by `python app.py index` |
+| API key | `GEMINI_API_KEY` in `.env` — free tier, per-project quota |
+| Port | `PORT`, default 5000, **use 5055 on macOS** |
+
+### Where the log goes
+
+`logs/requests.jsonl` — one JSON object per request, appended. Override the
+directory with `AI201_LOG_DIR`. Fields are documented at the top of
+`instrument.py`.
+
+```bash
+wc -l logs/requests.jsonl
+python3 -c "import json;[print(json.loads(l)['route'],json.loads(l)['duration_ms']) for l in open('logs/requests.jsonl')]"
+```
