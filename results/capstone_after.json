@@ -1,0 +1,59 @@
+[
+  {
+    "requests_sent": 8,
+    "records_written": 8,
+    "records_per_request": "8/8",
+    "fields_complete": "8/8",
+    "failures_logged": "2/2",
+    "calls_accurate": "3/3",
+    "median_latency_ms": 674.5,
+    "max_latency_ms": 1461.7,
+    "mean_tokens": 463.0,
+    "concurrent_200s": "3/3",
+    "concurrent_rows_matched": "3/3",
+    "concurrent_calls_accurate": "3/3",
+    "concurrent_calls_seen": [
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "requests_sent": 8,
+    "records_written": 8,
+    "records_per_request": "8/8",
+    "fields_complete": "8/8",
+    "failures_logged": "2/2",
+    "calls_accurate": "3/3",
+    "median_latency_ms": 742.9,
+    "max_latency_ms": 9504.2,
+    "mean_tokens": 439.3,
+    "concurrent_200s": "3/3",
+    "concurrent_rows_matched": "3/3",
+    "concurrent_calls_accurate": "3/3",
+    "concurrent_calls_seen": [
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "requests_sent": 8,
+    "records_written": 8,
+    "records_per_request": "8/8",
+    "fields_complete": "8/8",
+    "failures_logged": "2/2",
+    "calls_accurate": "3/3",
+    "median_latency_ms": 866.6,
+    "max_latency_ms": 1035.1,
+    "mean_tokens": 462.0,
+    "concurrent_200s": "3/3",
+    "concurrent_rows_matched": "3/3",
+    "concurrent_calls_accurate": "2/3",
+    "concurrent_calls_seen": [
+      1,
+      1,
+      2
+    ]
+  }
+]

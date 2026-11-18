@@ -714,3 +714,81 @@ than spread out — `generate.py` paces for that, which shows up as latency
 rather than as errors. The real cost at this volume is **48,022
 tokens/day and about 2.0 minutes of compute**; in dollars
 it is zero, because this volume does not leave the free tier.
+
+**Run Log and Verdicts**
+
+Produced by `capstone_eval.py::main`, three trials, against the local server
+started per `RUNNING.md` with `AI201_CACHE=0 PORT=5055 python serve.py`.
+Records read from `logs/requests.jsonl`, written by `instrument.py::observe`.
+Raw per-trial output in `results/capstone_before.json`.
+
+| Criterion | Target | Trial 1 | Trial 2 | Trial 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. One log record per request | 8 of 8 | 8/8 | 8/8 | 8/8 | MET |
+| 2. Required log fields | 8 of 8 | 8/8 | 8/8 | 8/8 | MET |
+| 3. Invalid requests leave a log record | 2 of 2 | 2/2 | 2/2 | 2/2 | MET |
+| 4. Model-call counts under concurrency | 3 of 3 | 0/3 | 0/3 | 0/3 | MISSED |
+| 5. Warm response latency | median ≤1500ms, max ≤2500ms | 1011 / 1218 | 728 / 808 | 563 / 884 | MET |
+
+Trial 3's first concurrent batch hit the free tier's 15-requests-per-minute
+limit and two of the three returned 500. Criterion 4 says to repeat after a
+minute in that case, so it was repeated; the 0/3 above is the repeat, not the
+rate-limited attempt. The rate-limited attempt is kept in the log and pasted
+below, because it is the only naturally-occurring error record in the run.
+
+Real output — criterion 4, the miss. Three concurrent requests, each making
+exactly one API call, each logging three (`instrument.py::observe`):
+
+```json
+{"ts": "2026-11-18T11:38:12.868+00:00", "request_id": "64b1211e09b3", "route": "/ask", "method": "POST", "question": "How noisy is Aldridge Hall?", "outcome": "answered", "refused": false, "best_distance": 0.3085, "sources": ["housing_aldridge_hall.txt", "housing_aldridge_hall_noise.txt", "housing_innisfree_hall_noise.txt"], "answer_chars": 295, "duration_ms": 868.0, "model_calls": 3, "prompt_tokens": 386, "output_tokens": 71, "status": 200}
+{"ts": "2026-11-18T11:38:12.869+00:00", "request_id": "d075be2f4e4b", "route": "/ask", "method": "POST", "question": "What is the printing quota?", "outcome": "answered", "refused": false, "best_distance": 0.4445, "sources": ["admin_printing_quota.txt", "course_cs_340_workload.txt", "course_engl_205_workload.txt", "course_stat_150_workload.txt", "money_textbooks.txt"], "answer_chars": 172, "duration_ms": 1008.6, "model_calls": 3, "prompt_tokens": 794, "output_tokens": 115, "status": 200}
+{"ts": "2026-11-18T11:38:12.869+00:00", "request_id": "80a4f27e3a4d", "route": "/ask", "method": "POST", "question": "When is the add drop deadline?", "outcome": "answered", "refused": false, "best_distance": 0.3577, "sources": ["admin_add_drop_deadline.txt", "admin_pass_fail_option.txt", "admin_withdrawal_deadline.txt", "advising_registration.txt", "course_cs_340_workload.txt"], "answer_chars": 169, "duration_ms": 7934.5, "model_calls": 3, "prompt_tokens": 1257, "output_tokens": 157, "status": 200}
+```
+
+Real output — criterion 3, the bad path (`serve.py::ask`, early return):
+
+```json
+{"ts": "2026-11-18T11:39:26.054+00:00", "request_id": "c7f6490b4e6e", "route": "/ask", "method": "POST", "question": "", "outcome": "bad_request", "status": 400, "duration_ms": 0.0, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+Real output — the rate-limited failure (`generate.py`, surfaced through
+`instrument.py::observe`; the 429 body is trimmed for width):
+
+```json
+{"ts": "2026-11-18T11:36:59.458+00:00", "request_id": "7d9e20680587", "route": "/ask", "method": "POST", "question": "What is the printing quota?", "outcome": "error", "status": 500, "error": "RuntimeError: Still rate limited after 4 attempts. Wait a minute and try again — your key is fine. [429 detail trimmed]", "duration_ms": 15506.1, "model_calls": 9, "prompt_tokens": 463, "output_tokens": 49}
+```
+
+**Verdicts and how I decided**
+
+| # | Verdict | How I decided |
+|---|---|---|
+| 1 | MET | Every trial appended exactly 8 records for 8 requests, with 8 distinct `request_id` values and route/method in the order sent. No duplicates, no gaps. |
+| 2 | MET | All 8 records per trial carried the seven base fields plus the three cost fields; `/ask` records carried the five answer fields and `/health` carried `index_ready`. |
+| 3 | MET | Both malformed bodies returned 400 and left exactly one record each, with empty `question` and all three cost fields at zero — they take the early return before retrieval. |
+| 4 | MISSED | The target is all 3 of 3 showing `model_calls: 1`. Every trial returned 0 of 3, logging 3 where the truth was 1. Reproduced three times plus a fourth after the rate-limit repeat. Not close. |
+| 5 | MET | Medians 1011, 728, 563 ms against a 1500 ms bound; maxima 1218, 808, 884 ms against 2500 ms. Every trial inside both bounds. |
+
+**Diagnosis — criterion 4. Component: `generate.py`'s session counters.
+Mechanism: process-wide state read concurrently.**
+
+`instrument.py::observe` measures a request's cost by calling
+`generate.counters()` before the handler runs and again after, and recording
+the difference. That is correct arithmetic over a counter only one request can
+touch at a time. `_session_calls`, `_session_prompt_tokens` and
+`_session_output_tokens` are module-level globals, and `serve.py` runs on
+Flask's threaded development server, so three concurrent requests all read and
+write the same three integers. Each request's "after" snapshot therefore
+includes the calls made by the other two between its own snapshots, and all
+three log `3`.
+
+It is one mechanism with several symptoms. The same contamination produced the
+`calls=9` on the two rate-limited 500s — those requests retried four times
+each while two neighbours were also retrying, so the delta swept up everything
+in flight. It also means the cost figure under **What It Costs** is only
+trustworthy because it was measured sequentially; measured under any real
+concurrency it would have been roughly three times too high, and the
+hundred-a-day arithmetic with it.
+
+Nothing is wrong with retrieval, the gate, chunking or generation. The system
+answers correctly throughout — only the record of what it cost is wrong, which
+is precisely the thing this unit added.
