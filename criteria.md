@@ -177,3 +177,79 @@ from.
      The whole reason the originals stay visible is so someone can see what you
      said before you knew the answer.
      ───────────────────────────────────────────────────────────────────────── -->
+
+---
+
+## Unit 9 acceptance criteria
+
+Set up the local server using `RUNNING.md` and start it with
+`AI201_CACHE=0 PORT=5055 python serve.py`. Send `Is the housing lottery random?`
+to `/ask` with a 120-second timeout and wait for the answer to warm up the
+embedding model. With no other traffic, run
+`python capstone_eval.py --label before --trials 3`. Each trial sends three
+in-corpus questions, two out-of-corpus questions, two invalid bodies, and one
+health check. Read only the lines appended to `logs/requests.jsonl` during the
+check you are scoring. Apply the per-trial targets to all three trials.
+
+### 1. One log record per request
+
+For each eight-request trial, parse the appended lines and require exactly
+eight JSON objects with eight distinct `request_id` values. In order, their
+`method` and `route` must match the seven `POST /ask` requests and one
+`GET /health` request. The logged `question` values for the first five records
+must match the five questions sent, in order.
+
+I use this file to count traffic and calculate cost per request. The first
+instrumented run left 11 records for 10 requests, so even one extra row can
+skew those totals.
+
+### 2. Required log fields
+
+Open the JSON records for each trial and check that 8 of 8 contain `ts`,
+`request_id`, `route`, `method`, `outcome`, `status`, `duration_ms`,
+`model_calls`, `prompt_tokens`, and `output_tokens`. Each answered or refused
+`/ask` record must also contain `question`, `answer_chars`, `refused`,
+`best_distance`, and `sources`. The `/health` record must contain `index_ready`.
+
+The cost calculation needs the counters even on requests that spend zero
+tokens. The local run path also uses `index_ready` to tell whether the Chroma
+index is available when Flask is already responding.
+
+### 3. Invalid requests leave a log record
+
+With the warm server idle, send two `POST /ask` requests with
+`Content-Type: application/json`, first with body `{}` and then with body
+`not json at all`. After each response, check that it returned HTTP 400 and
+that exactly one new row has `outcome: "bad_request"`, `status: 400`, an empty
+`question`, and `model_calls`, `prompt_tokens`, and `output_tokens` all set to
+zero. Both requests must pass.
+
+Both bodies take the early return in `serve.py`, before retrieval or model
+generation. If either path skips the log, the caller sees a 400 that I cannot
+account for in the request history.
+
+### 4. Model-call counts under concurrent requests
+
+With the same warm server and cache disabled, launch three `POST /ask`
+requests together from separate clients. Use `What is the printing quota?`,
+`How noisy is Aldridge Hall?`, and `When is the add drop deadline?`. Require
+three HTTP 200 responses with `refused: false`, then match each response's
+`request_id` to its log row. All 3 of 3 rows must show `model_calls: 1`.
+If the server prints `service pushed back. Retrying` during the batch, repeat
+after a minute so each answer can be measured on a single attempt.
+
+Flask can handle overlapping requests while `generate.py` keeps module-global
+counters. The first overlapping answers logged 3, 3, and 4 calls for one call
+each. That would inflate my estimate of how many calls a day the guide uses.
+
+### 5. Warm response latency
+
+For each sequential trial, require all three in-corpus questions to have
+`outcome: "answered"` and `status: 200`. Sort those three rows by
+`duration_ms`. The middle value must be at most 1,500 ms and the largest at
+most 2,500 ms.
+
+The warm baseline had a roughly 911 ms median and a 2,420 ms maximum. These
+bounds allow some variation in the model call and catch slower runs once the
+local ONNX model has finished its 30–60 second startup load. Disabling the
+response cache keeps its roughly 127 ms hits from pulling the median down.
