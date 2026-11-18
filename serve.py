@@ -20,11 +20,12 @@ Why this exists: `app.py` runs once and exits, which is fine on your laptop
 and impossible to deploy. A hosted service has to stay up and wait for
 requests. This is the smallest thing that does that.
 
-⚠️ There is deliberately no logging, no timing and no metrics in this file.
-Unit 9 has you build the structured log yourself — the request line, the
-timing field everyone skips, the whole instrument-before-you-deploy exercise.
-Shipping a logger here would hand you the answer to that. Add yours in unit 9;
-this file stays the bare shell until then.
+Instrumented in unit 9. Every request through either route writes one JSON
+record to logs/requests.jsonl — timestamp, request id, what came in, what went
+out, how long it took, and what it cost in model calls and tokens. The record
+is written in a `finally`, so a request that returns 400, returns 500, or
+raises outright is logged just the same as one that worked. See
+`instrument.py` for the field list.
 """
 
 import os
@@ -32,6 +33,7 @@ import os
 from flask import Flask, jsonify, request
 
 import config
+import instrument
 
 app = Flask(__name__)
 
@@ -48,19 +50,21 @@ def health():
     """
     from store import index_exists
 
-    ready = index_exists(config.CORPUS)
-    return jsonify(
-        {
-            "status": "ok",
-            "corpus": config.CORPUS,
-            "index_ready": ready,
-            "detail": (
-                "ready"
-                if ready
-                else "no index for this corpus — run `python app.py index`"
-            ),
-        }
-    )
+    with instrument.observe("/health", "GET") as record:
+        ready = index_exists(config.CORPUS)
+        record["index_ready"] = ready
+        return jsonify(
+            {
+                "status": "ok",
+                "corpus": config.CORPUS,
+                "index_ready": ready,
+                "detail": (
+                    "ready"
+                    if ready
+                    else "no index for this corpus — run `python app.py index`"
+                ),
+            }
+        )
 
 
 @app.post("/ask")
@@ -70,39 +74,56 @@ def ask():
     A refused question is a 200, not an error. The gate refusing is your
     system working — it is an answer, and the JSON says so with
     `"refused": true` so whatever calls this can tell the two apart.
+
+    Every path through this function writes exactly one log record, including
+    the two that return early. A rejected request and a crashed one are both
+    things you want to find later.
     """
     from app import ask_pipeline
 
     payload = request.get_json(silent=True) or {}
     question = (payload.get("question") or "").strip()
 
-    if not question:
-        return (
-            jsonify(
-                {
-                    "error": "Send JSON with a question in it, like "
-                    '{"question": "is the housing lottery random?"}'
-                }
-            ),
-            400,
+    with instrument.observe("/ask", "POST", question=question) as record:
+        if not question:
+            record["outcome"] = "bad_request"
+            record["status"] = 400
+            return (
+                jsonify(
+                    {
+                        "error": "Send JSON with a question in it, like "
+                        '{"question": "is the housing lottery random?"}'
+                    }
+                ),
+                400,
+            )
+
+        try:
+            outcome = ask_pipeline(question, corpus=config.CORPUS)
+        except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
+            record["outcome"] = "error"
+            record["status"] = 500
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+
+        record["outcome"] = "refused" if outcome["refused"] else "answered"
+        record["refused"] = outcome["refused"]
+        record["best_distance"] = round(outcome["best_distance"], 4)
+        record["sources"] = outcome["sources"]
+        record["answer_chars"] = len(outcome["answer"] or "")
+
+        return jsonify(
+            {
+                "question": question,
+                "answer": outcome["answer"],
+                "refused": outcome["refused"],
+                "sources": outcome["sources"],
+                "best_distance": round(outcome["best_distance"], 4),
+                "threshold": outcome["threshold"],
+                "corpus": config.CORPUS,
+                "request_id": record["request_id"],
+            }
         )
-
-    try:
-        outcome = ask_pipeline(question, corpus=config.CORPUS)
-    except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
-        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
-
-    return jsonify(
-        {
-            "question": question,
-            "answer": outcome["answer"],
-            "refused": outcome["refused"],
-            "sources": outcome["sources"],
-            "best_distance": round(outcome["best_distance"], 4),
-            "threshold": outcome["threshold"],
-            "corpus": config.CORPUS,
-        }
-    )
 
 
 def main():

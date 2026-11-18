@@ -311,3 +311,17 @@ def answer_from_chunks(question: str, results, cache: bool = True) -> str:
     """
     prompt = build_prompt(question, results)
     return generate(prompt, system=GROUNDING_INSTRUCTION, cache=cache)
+
+
+def counters() -> dict:
+    """This session's running totals, for the unit 9 request log.
+
+    Read-only. `instrument.py` snapshots these before and after a request and
+    records the difference, which is what makes the per-request cost a
+    measurement rather than an estimate from the pricing page.
+    """
+    return {
+        "calls": _session_calls,
+        "prompt_tokens": _session_prompt_tokens,
+        "output_tokens": _session_output_tokens,
+    }
