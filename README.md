@@ -628,3 +628,89 @@ Path B — local with logs. The embedding model and the Chroma index both live o
 disk and the free hosting tier gives 512 MB with no persistent storage, so the
 index would have to rebuild on every cold start. The run path is a single
 documented command, in `RUNNING.md`.
+
+**Instrumentation**
+
+Every request through `/ask` or `/health` appends one JSON object to
+`logs/requests.jsonl`, written by `instrument.py::observe` and read back with
+`grep`, `jq`, or four lines of Python. One record per line, no multi-line
+entries, no log sentences to parse.
+
+Each record carries: `ts` (UTC, millisecond resolution), `request_id` (12 hex
+chars), `route`, `method`, `outcome`, `status`, and `duration_ms` measured
+around the whole handler. Requests to `/ask` additionally carry `question`
+(what came in), `answer_chars` (size of what went out), `refused`,
+`best_distance`, `sources`, and the cost fields `model_calls`,
+`prompt_tokens`, `output_tokens`. A record that failed carries `error` as
+`"TypeName: message"`.
+
+The record is written in a `finally` block, so a request that returns 400,
+returns 500, or raises on its way out is logged exactly like one that worked.
+A failure that shows up only as an absence is one you can never find
+afterwards.
+
+21 records exist at time of writing. Ten of them, chosen to include both
+failure paths, both refusals, a health check and five answered questions:
+
+```json
+{"ts": "2026-11-18T11:17:52.973+00:00", "request_id": "3489172f6da3", "route": "/ask", "method": "POST", "question": "", "outcome": "bad_request", "status": 400, "duration_ms": 0.0, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"ts": "2026-11-18T11:17:52.982+00:00", "request_id": "6d73eac7fa5d", "route": "/ask", "method": "POST", "question": "", "outcome": "bad_request", "status": 400, "duration_ms": 0.0, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"ts": "2026-11-18T11:17:52.890+00:00", "request_id": "d0415c9bb814", "route": "/ask", "method": "POST", "question": "What is the capital of Mongolia?", "outcome": "refused", "refused": true, "best_distance": 0.7873, "sources": [], "answer_chars": 43, "duration_ms": 36.0, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "status": 200}
+{"ts": "2026-11-18T11:17:52.934+00:00", "request_id": "8786f2438e72", "route": "/ask", "method": "POST", "question": "How do I write a for loop in Rust?", "outcome": "refused", "refused": true, "best_distance": 0.8598, "sources": [], "answer_chars": 43, "duration_ms": 30.8, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "status": 200}
+{"ts": "2026-11-18T11:13:35.496+00:00", "request_id": "03c603338226", "route": "/health", "method": "GET", "index_ready": true, "duration_ms": 23507.9, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "outcome": "answered", "status": 200}
+{"ts": "2026-11-18T11:19:16.714+00:00", "request_id": "689abded2598", "route": "/ask", "method": "POST", "question": "What are the wait times at Kestrel Commons during lunch?", "outcome": "answered", "refused": false, "best_distance": 0.1606, "sources": ["dining_halden_hall_followup.txt", "dining_kestrel_commons.txt", "dining_kestrel_commons_followup.txt", "dining_the_ridgeway_cafe_followup.txt"], "answer_chars": 155, "duration_ms": 2419.8, "model_calls": 1, "prompt_tokens": 553, "output_tokens": 55, "status": 200}
+{"ts": "2026-11-18T11:19:19.149+00:00", "request_id": "3d7515040b57", "route": "/ask", "method": "POST", "question": "How late can I declare a course pass/fail?", "outcome": "answered", "refused": false, "best_distance": 0.2075, "sources": ["admin_add_drop_deadline.txt", "admin_declaring_a_major.txt", "admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "advising_registration.txt"], "answer_chars": 118, "duration_ms": 1381.8, "model_calls": 1, "prompt_tokens": 461, "output_tokens": 32, "status": 200}
+{"ts": "2026-11-18T11:19:20.544+00:00", "request_id": "c70c1173b637", "route": "/ask", "method": "POST", "question": "What is the printing quota?", "outcome": "answered", "refused": false, "best_distance": 0.4445, "sources": ["admin_printing_quota.txt", "course_cs_340_workload.txt", "course_engl_205_workload.txt", "course_stat_150_workload.txt", "money_textbooks.txt"], "answer_chars": 172, "duration_ms": 1928.2, "model_calls": 1, "prompt_tokens": 408, "output_tokens": 44, "status": 200}
+{"ts": "2026-11-18T11:19:22.486+00:00", "request_id": "9b4aa8696e6f", "route": "/ask", "method": "POST", "question": "How noisy is Aldridge Hall?", "outcome": "answered", "refused": false, "best_distance": 0.3085, "sources": ["housing_aldridge_hall.txt", "housing_aldridge_hall_noise.txt", "housing_innisfree_hall_noise.txt"], "answer_chars": 207, "duration_ms": 798.9, "model_calls": 1, "prompt_tokens": 386, "output_tokens": 49, "status": 200}
+{"ts": "2026-11-18T11:19:23.298+00:00", "request_id": "adafe70735f6", "route": "/ask", "method": "POST", "question": "What is the workload for PHYS 130?", "outcome": "answered", "refused": false, "best_distance": 0.2422, "sources": ["course_phys_130.txt", "course_phys_130_exams.txt", "course_phys_130_workload.txt"], "answer_chars": 234, "duration_ms": 870.9, "model_calls": 1, "prompt_tokens": 351, "output_tokens": 72, "status": 200}
+```
+
+The first two entries above are the failure path: `outcome: "bad_request"`,
+`status: 400`, `duration_ms: 0.0`, and an empty `question` — one was an empty
+JSON body, the other was the string `not json at all`, which Flask's
+`get_json(silent=True)` turns into `None` rather than raising. Both were
+rejected before any retrieval ran, which is why they cost nothing.
+
+**What It Costs**
+
+Measured over **10 sequential `/ask` requests against a warm server**, each a
+different question so `generate.py`'s response cache could not serve a repeat.
+The numbers come from the log's own `prompt_tokens`, `output_tokens` and
+`duration_ms` fields, not from a pricing page.
+
+| Measure | Mean over all 10 | Mean over the 9 that called the API |
+|---|---|---|
+| Total tokens per run | **432.2** | **480.2** |
+| Wall clock per run | **1.102s** | **1.210s** |
+| API calls per run | **0.90** | 1.00 |
+
+Two columns because one of the ten cost nothing. "is the housing lottery
+random?" had been asked earlier in the same server process, so
+`generate.py`'s cache answered it: **0 API calls, 0 tokens, 127.7ms** against
+a ~900ms median for the rest. That is the cache working as designed, and it
+means the honest per-run cost depends on how repetitive the traffic is. The
+right-hand column is the cost of a question nobody has asked before, which is
+the number to plan with.
+
+**How I measured it.** Started the server, sent one warm-up request so the
+ONNX embedding model was already loaded, then sent ten distinct questions one
+at a time, waiting for each to return before sending the next. Sequential on
+purpose — the concurrency problem described under Run Log and Verdicts makes
+overlapping requests produce token counts that are not trustworthy. Then read
+the last ten records out of `logs/requests.jsonl` and averaged.
+
+**A hundred runs a day.** Taking the uncached figure of 480.2 tokens and
+1.210s per run:
+
+```
+tokens : 480.2 x 100 = 48,022 tokens/day
+calls  : 1 x 100     = 100 API calls/day
+compute: 1.210s x 100 = 121.0s/day = 2.0 minutes of wall clock
+```
+
+100 calls a day sits inside the free tier's daily allowance, and the per-minute
+limit is the one that would bite first if those 100 arrived together rather
+than spread out — `generate.py` paces for that, which shows up as latency
+rather than as errors. The real cost at this volume is **48,022
+tokens/day and about 2.0 minutes of compute**; in dollars
+it is zero, because this volume does not leave the free tier.
