@@ -584,3 +584,47 @@ The general lesson: I set the targets I could defend rather than the ones that
 would tell me something. The one criterion where I deliberately targeted a
 property I was already failing is the one that produced every point of this
 unit's work.
+
+---
+
+## Capstone
+
+**What This Extends**
+
+The Unofficial Guide — project 1, the RAG system over `campus_life`. It
+already loads 88 student posts, chunks them with a title-anchored paragraph
+splitter, embeds them into Chroma, retrieves the closest chunks for a question,
+refuses anything past a 0.6 distance cutoff, and generates a grounded answer
+with its source named. All of that is unchanged.
+
+What is new this unit is the operational layer around it. `serve.py` shipped as
+a bare HTTP shell with, in its own words, "deliberately no logging, no timing
+and no metrics in this file." That is what I built: a structured request log
+with named fields, timing on every request, and a measured cost per run. The
+system answers the same questions it did before; the difference is that there
+is now a record of it having done so, and a number for what it cost.
+
+**The Shape**
+
+Shape A — deploy and instrument. The extension *is* the operational layer: a
+run path that isn't my editor, a structured log every request writes to, and a
+cost measurement taken from real runs rather than a pricing page.
+
+Out of scope, deliberately:
+
+- **No retrieval changes.** No hybrid search, no second embedding model, no
+  reranker. The chunker stays exactly where unit 2 left it, at
+  `MIN_BODY_CHARS = 0`.
+- **No new endpoints.** `/ask` and `/health` are what `serve.py` has and what
+  it will still have. I am instrumenting the two routes that exist, not adding
+  a third.
+- **No authentication, no rate limiting of my own.** `generate.py` already
+  paces its calls against the free tier. Adding a second limiter in front of it
+  would be a new subsystem, not an instrumentation layer.
+- **No dashboard.** The log is a file of JSON records meant to be read back
+  and grepped. Anything that renders it is a second project.
+
+Path B — local with logs. The embedding model and the Chroma index both live on
+disk and the free hosting tier gives 512 MB with no persistent storage, so the
+index would have to rebuild on every cold start. The run path is a single
+documented command, in `RUNNING.md`.
