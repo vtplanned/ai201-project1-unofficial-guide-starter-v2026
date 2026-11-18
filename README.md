@@ -916,25 +916,42 @@ one is blocking a criterion I currently cannot score reliably.
 
 **How I Used AI**
 
-**1. Finding the bug in my own instrumentation before I wrote criteria about
-it.** After the first instrumented run I had eleven log records and asked
-Claude to read them back rather than eyeballing them myself. It pointed at the
-`model_calls` column — 3, 3 and 4 on requests that each made one call — and
-tied it to Flask's threaded server reading `generate.py`'s module-level
-counters. I had seen those numbers and not registered them as wrong. What I did
-with it: I did not take the explanation on trust, and wrote criterion 4 so the
-claim had to be *demonstrated* — three concurrent requests from separate
-clients, each response matched back to its log row by `request_id`, all three
-required to show exactly 1. That turned an assertion in a chat window into
-something a reader could reproduce, and it is the criterion that carried this
-whole unit.
+I used Claude for the implementation work and kept the judgment calls. It wrote
+`instrument.py` and `capstone_eval.py` from a shape I described; I wrote all
+five acceptance criteria, the targets and the reasons behind them, and I read
+the logs and called the verdicts. Two moments are worth writing down.
 
-**2. Scoping the extension down before building it.** I asked which of my four
-systems to extend and got a comparison across run paths, local-model weight and
-failure surface rather than a recommendation to pick the most impressive one.
-Project 1 won on a specific ground I would not have thought of: its `serve.py`
-shipped deliberately uninstrumented, so Shape A's deliverable and the build
-were the same piece of work. What I changed: the proposed scope still had me
-adding log rotation and a latency breakdown. I cut both, and they are in
-What's Still Broken instead — the breakdown is now the one thing I would do
-first, which is a better answer than a half-built version of it in the repo.
+**1. It found a bug in my instrumentation, and I made it prove it.** After the
+first instrumented run I had eleven log records for ten requests, so instead of
+eyeballing the file I asked Claude to read it back to me. It pointed at
+`model_calls` — 3, 3 and 4 on requests that each made one model call — and said
+the cause was Flask serving overlapping requests while `generate.py` kept its
+counters in module-level globals, so each request's before/after delta swept up
+its neighbours' calls. I had looked at those numbers already and not registered
+that they were wrong.
+
+What I did with it: I did not take the explanation on trust. I wrote criterion 4
+so the claim had to be demonstrated rather than asserted — three concurrent
+requests from separate clients, each response matched back to its log row by
+`request_id`, all three required to show exactly 1. If the diagnosis had been
+wrong, that criterion would have failed for a different reason and I would have
+seen it. It went 0/3 before the fix and 3/3 after, and it is the criterion this
+unit actually turned on.
+
+**2. I cut the scope it proposed.** I asked which of my four systems to extend
+and got a comparison across run path, local-model weight and failure surface
+instead of "pick the most impressive one." Project 1 won on a ground I had not
+thought of: its `serve.py` ships deliberately uninstrumented, so the Shape A
+deliverable and the build were the same piece of work.
+
+What I changed: the proposed scope also had me adding log rotation and a
+`duration_ms` breakdown. I cut both. Log rotation is maintenance, not evidence,
+and the breakdown is a real piece of work that I would have half-built with the
+time I had left. Both are in What's Still Broken instead, and the breakdown is
+now the one thing I would do first — which is a more honest answer than a
+broken version of it sitting in the repo.
+
+**Where I would not use it again the same way.** I let Claude draft the verdict
+table and the two diagnoses from my run logs because I was short on time. The
+numbers are mine and the readings follow from them, but the wording is not, and
+that is the part of this write-up I trust least.
