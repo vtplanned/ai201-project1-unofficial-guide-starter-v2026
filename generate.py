@@ -40,6 +40,24 @@ _call_times: list[float] = []
 _session_calls = 0
 _session_prompt_tokens = 0
 _session_output_tokens = 0
+
+# UNIT 9 FIX. The three totals above are process-wide, which is right for the
+# end-of-session usage line and wrong for anything per-request. serve.py runs
+# on a threaded server, so two requests in flight at once both read the same
+# globals, and `instrument.py` ended up logging 3 calls for a request that made
+# 1. These thread-local counters are incremented in the same two places and
+# never shared, so a request only ever sees its own work.
+import threading as _threading
+
+_local = _threading.local()
+
+
+def _mine():
+    if not hasattr(_local, "calls"):
+        _local.calls = 0
+        _local.prompt_tokens = 0
+        _local.output_tokens = 0
+    return _local
 _cache_hits = 0
 _client = None
 _budget_warned = False
@@ -140,8 +158,13 @@ def _record_tokens(response) -> None:
         meta = getattr(response, "usage_metadata", None)
         if meta is None:
             return
-        _session_prompt_tokens += int(getattr(meta, "prompt_token_count", 0) or 0)
-        _session_output_tokens += int(getattr(meta, "candidates_token_count", 0) or 0)
+        _prompt = int(getattr(meta, "prompt_token_count", 0) or 0)
+        _output = int(getattr(meta, "candidates_token_count", 0) or 0)
+        _session_prompt_tokens += _prompt
+        _session_output_tokens += _output
+        mine = _mine()
+        mine.prompt_tokens += _prompt
+        mine.output_tokens += _output
     except Exception:
         pass  # accounting never breaks the thing it is accounting for
 
@@ -233,6 +256,7 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
             client = _get_client()
             _call_times.append(time.monotonic())
             _session_calls += 1
+            _mine().calls += 1
 
             kwargs = {"model": config.MODEL, "contents": prompt}
             if system:
@@ -320,8 +344,9 @@ def counters() -> dict:
     records the difference, which is what makes the per-request cost a
     measurement rather than an estimate from the pricing page.
     """
+    mine = _mine()
     return {
-        "calls": _session_calls,
-        "prompt_tokens": _session_prompt_tokens,
-        "output_tokens": _session_output_tokens,
+        "calls": mine.calls,
+        "prompt_tokens": mine.prompt_tokens,
+        "output_tokens": mine.output_tokens,
     }
