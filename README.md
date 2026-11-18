@@ -792,3 +792,149 @@ hundred-a-day arithmetic with it.
 Nothing is wrong with retrieval, the gate, chunking or generation. The system
 answers correctly throughout — only the record of what it cost is wrong, which
 is precisely the thing this unit added.
+
+**The Improvement**
+
+**What I changed.** `generate.py` now keeps a second set of counters in
+`threading.local()` alongside the process-wide session totals, incremented in
+the same two places — once where `_session_calls` is bumped, once where the
+response's token metadata is read. `counters()`, which only `instrument.py`
+calls, now returns the thread-local view. The session totals are untouched, so
+the end-of-run usage line still reports what the whole process did.
+
+**Why I picked it.** The diagnosis named process-wide state read across
+threads as the mechanism. Thread-local storage is the narrowest fix for
+exactly that: it does not change what the counters count, when they are read,
+or how `observe` computes the difference — only whose work each request can
+see. I did not serialise requests or move to a single worker, because both
+would have fixed the measurement by removing the concurrency rather than by
+measuring it correctly.
+
+Run Log — After. Same harness, same three trials, `results/capstone_after.json`.
+
+| Criterion | Target | Trial 1 | Trial 2 | Trial 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. One log record per request | 8 of 8 | 8/8 | 8/8 | 8/8 | MET |
+| 2. Required log fields | 8 of 8 | 8/8 | 8/8 | 8/8 | MET |
+| 3. Invalid requests leave a log record | 2 of 2 | 2/2 | 2/2 | 2/2 | MET |
+| 4. Model-call counts under concurrency | 3 of 3 | 3/3 | 3/3 | 3/3 | MET |
+| 5. Warm response latency | median ≤1500ms, max ≤2500ms | 675 / 1462 | 743 / **9504** | 867 / 1035 | MISSED |
+
+Trial 3's criterion 4 read 2/3 on the first attempt, with one request logging
+`model_calls: 2`. That request genuinely made two calls — it was retried after
+the service pushed back — so the counter was right and the batch was not a
+clean single-attempt measurement. Criterion 4 says to repeat in that case. The
+repeat returned 3/3.
+
+Real output — criterion 4 after the change. Three concurrent requests, each
+logging exactly one call (`instrument.py::observe`):
+
+```json
+{"ts": "2026-11-18T11:55:16.941+00:00", "request_id": "9a8aeff38a0e", "route": "/ask", "method": "POST", "question": "When is the add drop deadline?", "outcome": "answered", "refused": false, "best_distance": 0.3577, "sources": ["admin_add_drop_deadline.txt", "admin_pass_fail_option.txt", "admin_withdrawal_deadline.txt", "advising_registration.txt", "course_cs_340_workload.txt"], "answer_chars": 176, "duration_ms": 1254.0, "model_calls": 1, "prompt_tokens": 463, "output_tokens": 49, "status": 200}
+{"ts": "2026-11-18T11:55:16.940+00:00", "request_id": "0d2b007cdcac", "route": "/ask", "method": "POST", "question": "How noisy is Aldridge Hall?", "outcome": "answered", "refused": false, "best_distance": 0.3085, "sources": ["housing_aldridge_hall.txt", "housing_aldridge_hall_noise.txt", "housing_innisfree_hall_noise.txt"], "answer_chars": 234, "duration_ms": 1297.9, "model_calls": 1, "prompt_tokens": 386, "output_tokens": 57, "status": 200}
+{"ts": "2026-11-18T11:55:16.941+00:00", "request_id": "142d686e9c30", "route": "/ask", "method": "POST", "question": "What is the printing quota?", "outcome": "answered", "refused": false, "best_distance": 0.4445, "sources": ["admin_printing_quota.txt", "course_cs_340_workload.txt", "course_engl_205_workload.txt", "course_stat_150_workload.txt", "money_textbooks.txt"], "answer_chars": 172, "duration_ms": 2313.1, "model_calls": 1, "prompt_tokens": 408, "output_tokens": 44, "status": 200}
+```
+
+**Did it help?**
+
+Yes on the criterion it was aimed at, and a different criterion went red.
+
+| Criterion | Before | After |
+|---|---|---|
+| 1. One record per request | 8/8 8/8 8/8 — MET | 8/8 8/8 8/8 — MET |
+| 2. Required fields | 8/8 8/8 8/8 — MET | 8/8 8/8 8/8 — MET |
+| 3. Invalid requests logged | 2/2 2/2 2/2 — MET | 2/2 2/2 2/2 — MET |
+| 4. Call counts under concurrency | **0/3 0/3 0/3 — MISSED** | **3/3 3/3 3/3 — MET** |
+| 5. Warm latency | 1218 / 808 / 884 max — MET | 1462 / **9504** / 1035 max — **MISSED** |
+
+Criterion 4 went from every trial failing to every trial passing, and the
+logged counts went from `[3,3,3]` to `[1,1,1]`. That is the whole of what the
+change was for, and it is measurable in one field.
+
+Criterion 5 moved the other way, on one request in trial 2:
+
+```json
+{"ts": "2026-11-18T11:39:10.831+00:00", "request_id": "509f2ba0324d", "route": "/ask", "method": "POST", "question": "How do I appeal a grade?", "outcome": "answered", "refused": false, "best_distance": 0.3376, "sources": ["admin_grade_appeals.txt", "course_engl_205_exams.txt", "course_stat_150.txt", "course_stat_150_exams.txt"], "answer_chars": 211, "duration_ms": 9504.2, "model_calls": 1, "prompt_tokens": 397, "output_tokens": 48, "status": 200}
+```
+
+**The change did not cause that.** That record shows `model_calls: 1` and 445
+tokens — a single, normally-sized call that took 9.5 seconds. By that point in
+the session the run had spent enough of the free tier's 15-requests-per-minute
+allowance that `generate.py::_wait_for_slot` held the request in a queue before
+calling out at all. `instrument.py::observe` times the whole handler, so the
+pacing wait is inside `duration_ms`.
+
+So the honest reading is that criterion 5 measured something I did not intend
+it to. I wrote it to catch a system that had got slower after warm-up; what it
+actually catches is a system waiting its turn at a rate limit, which is the
+free tier working correctly. The before-run passed it because it happened to
+run earlier in the quota window — not because the system was faster. Two runs
+of identical code can land on either side of that bound depending on nothing
+but when they were run, which is a criterion that cannot be scored the same way
+twice. I am recording it as a MISS rather than revising it after the fact,
+because the revision I would make is a real one and belongs in the next unit's
+criteria, not in a rewrite of this unit's.
+
+**What's Still Broken**
+
+**Criterion 5, and it is a measurement problem rather than a latency problem.**
+`duration_ms` currently answers "how long did the caller wait", which bundles
+three different things: retrieval, the model call, and time spent queued behind
+a rate limit. Those should be separate fields. What I would do: record
+`queue_ms`, `retrieval_ms` and `model_ms` separately in `observe`, and write the
+latency criterion against `retrieval_ms + model_ms`, leaving `queue_ms` to a
+criterion of its own about quota pressure. That is also the stretch item I did
+not attempt — a latency breakdown — so it is the same piece of work twice.
+
+**The thread-local fix is correct for threads and would not survive a process
+worker.** `gunicorn` with more than one worker runs separate processes, and
+thread-local state is per-thread inside one process. The counters would be
+correct per request there too, by accident rather than by design, because each
+process has its own globals. But a worker handling two requests on two threads
+is the case I fixed, and a worker pool with `--threads` is the case I have
+tested. I stopped here because Path B runs one process and the criterion is
+scored against the documented run path.
+
+**The log grows without bound.** `logs/requests.jsonl` is append-only with no
+rotation. At 55 records it is trivial; at a hundred runs a day it is about
+36,000 records a year, which is still small, but nothing truncates it and
+nothing would tell me if the disk filled. No criterion covers this, which is
+the same gap I found in unit 2 — the thing nobody wrote a target for is the
+thing that can fail silently.
+
+**Nothing verifies the log against reality except criterion 4.** Criteria 1 and
+2 check that records exist and have fields. Criterion 4 is the only one that
+checks a logged value is *true*. That is why it was the only one that caught
+anything, and the lesson I would carry forward is that counting fields is not
+the same as checking them.
+
+**The one thing I would do first.** Split `duration_ms` into its stages. It
+fixes criterion 5, it turns the cost section from one number into a breakdown
+that says where the time goes, and it is the prerequisite for any latency work
+after it. Everything else on this list is either small or hypothetical; this
+one is blocking a criterion I currently cannot score reliably.
+
+**How I Used AI**
+
+**1. Finding the bug in my own instrumentation before I wrote criteria about
+it.** After the first instrumented run I had eleven log records and asked
+Claude to read them back rather than eyeballing them myself. It pointed at the
+`model_calls` column — 3, 3 and 4 on requests that each made one call — and
+tied it to Flask's threaded server reading `generate.py`'s module-level
+counters. I had seen those numbers and not registered them as wrong. What I did
+with it: I did not take the explanation on trust, and wrote criterion 4 so the
+claim had to be *demonstrated* — three concurrent requests from separate
+clients, each response matched back to its log row by `request_id`, all three
+required to show exactly 1. That turned an assertion in a chat window into
+something a reader could reproduce, and it is the criterion that carried this
+whole unit.
+
+**2. Scoping the extension down before building it.** I asked which of my four
+systems to extend and got a comparison across run paths, local-model weight and
+failure surface rather than a recommendation to pick the most impressive one.
+Project 1 won on a specific ground I would not have thought of: its `serve.py`
+shipped deliberately uninstrumented, so Shape A's deliverable and the build
+were the same piece of work. What I changed: the proposed scope still had me
+adding log rotation and a latency breakdown. I cut both, and they are in
+What's Still Broken instead — the breakdown is now the one thing I would do
+first, which is a better answer than a half-built version of it in the repo.
